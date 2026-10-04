@@ -1,0 +1,4 @@
+# LF everywhere: the Jenkinsfile and sources are read on a Linux agent.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf
