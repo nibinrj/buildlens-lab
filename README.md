@@ -6,7 +6,7 @@ Versions reuse the P2 parent POM pins; use JDK 21 and the pinned Maven wrapper i
 | Module | Contents |
 | --- | --- |
 | core | Stable calculator and slug tests |
-| api | Stable price service tests |
+| api | Stable price tests and an injected controlled duration test |
 | flaky-lab | **Injected** random, time and order flakiness |
 
 ## Injected tests
@@ -40,3 +40,17 @@ labels reports BLOCKING or QUARANTINE. Clean checkout prevents old XML being rep
 
 A failed quarantined test marks its stage UNSTABLE while preserving the overall build result.
 Quarantine-stage passes can release a test after the configured consecutive-pass threshold.
+
+## Controlled duration regression
+
+ControlledSlowTest#controlledWork adds an **injected** delay selected by
+-Dbuildlens.slow.ms=0..10000 (milliseconds). The default is zero. It still checks
+the price service result; the delay is demonstration input, not evidence of a
+real performance defect. Invalid values fail rather than silently changing policy.
+
+Use the same pinned runtime and baseline input, then raise the delay for two PR
+builds, for example: mvn -B -ntp -pl api -am -Dbuildlens.slow.ms=3000 test.
+The Jenkins SLOW_MILLIS parameter passes this property through the blocking and
+quarantine test invocations. Capture agent allocation time immediately inside
+node(); reportBuild sends its measured busy duration separately from build duration.
+Local reported cost is equivalent compute cost at a dated reference price.
