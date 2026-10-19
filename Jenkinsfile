@@ -1,34 +1,28 @@
-// Builds the lab project on the BuildLens agent and reports every build to BuildLens.
-// The 'buildlens' library is configured in BuildLens's jenkins/casc/jenkins.yaml (folder shared-library/).
-//
-// Scripted Pipeline because timedStage wraps stage(), which Declarative syntax does not allow.
-// The finally block plays the role of Declarative's post { always }.
+// Scripted pipeline; flakiness and configurable slowdown are explicitly INJECTED.
 @Library('buildlens') _
-
+properties([parameters([
+    string(name: 'SLOW_MILLIS', defaultValue: '0', description: 'Controlled injected delay, 0..10000 milliseconds')
+])])
 node('maven') {
+    long agentStartedAt = System.currentTimeMillis()
     timestamps {
         try {
-            timedStage('Checkout') {
-                checkout scm
+            String slow = params.SLOW_MILLIS?.trim() ?: '0'
+            if (!(slow ==~ /[0-9]{1,5}/) || slow.toInteger() > 10000) {
+                error('SLOW_MILLIS must be an integer from 0 to 10000')
             }
-            timedStage('Build') {
-                sh 'mvn -B -ntp -DskipTests package'
-            }
-            timedStage('Test') {
-                // Test failures make the build UNSTABLE through the junit step, not FAILED.
-                sh 'mvn -B -ntp -Dmaven.test.failure.ignore=true verify'
-                junit allowEmptyResults: true,
-                      testResults: '**/target/surefire-reports/TEST-*.xml,**/target/failsafe-reports/TEST-*.xml'
-            }
+            timedStage('Checkout') { deleteDir(); checkout scm }
+            timedStage('Build') { sh 'mvn -B -ntp -DskipTests package' }
+            quarantineAwareTests(repo: 'nibinrj/buildlens-lab',
+                mavenArgs: "-Dbuildlens.flaky.seed=${env.BUILD_NUMBER} -Dbuildlens.flaky.clockMillis=${env.BUILD_NUMBER}000 -Dbuildlens.slow.ms=${slow}")
         } catch (org.jenkinsci.plugins.workflow.steps.FlowInterruptedException e) {
-            // finally runs before Jenkins records the result, so set it here for reportBuild.
-            currentBuild.result = 'ABORTED'
-            throw e
+            currentBuild.result = 'ABORTED'; throw e
         } catch (e) {
-            currentBuild.result = 'FAILURE'
-            throw e
+            currentBuild.result = 'FAILURE'; throw e
         } finally {
-            reportBuild()
+            reportBuild(repo: 'nibinrj/buildlens-lab', agentStartedAt: agentStartedAt,
+                reports: '**/target/surefire-reports/TEST-*.xml',
+                quarantineReports: '**/target/surefire-reports-quarantine/TEST-*.xml')
         }
     }
 }
